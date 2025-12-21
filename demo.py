@@ -66,6 +66,11 @@ def main():
         while True:
             # 1. Capture frame
             frame = picam.capture_array()
+            if frame is None:
+                break
+
+            if frame.shape[2] == 4:
+                frame = frame[:, :, :3]
             # frame is RGB (Picamera2 default), convert to BGR for OpenCV display
             # but keep RGB for preprocessing if model expects it
             
