@@ -774,7 +774,6 @@ def preprocess_from_rpi_cam(rpi_cam,
 
     while True:
         frame = rpi_cam.capture_array()
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
         frame_idx += 1
 
@@ -783,7 +782,6 @@ def preprocess_from_rpi_cam(rpi_cam,
             continue
 
         # Process only the kept frames
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frames.append(frame)
         processed_frame = preprocess_fn(frame, width, height)
         processed_frames.append(processed_frame)
@@ -954,6 +952,7 @@ def resize_frame_for_output(frame: np.ndarray,
 def visualize(
     output_queue: queue.Queue,
     cap: Optional[cv2.VideoCapture],
+    rpi_cam: Any,  # Picamera2
     save_stream_output: bool,
     output_dir: str,
     callback: Callable[[Any, Any], None],
@@ -983,12 +982,16 @@ def visualize(
     frame_height = None
 
     # Window + writer init (only for camera/video, not images)
-    if cap is not None:
+    if cap is not None or rpi_cam is not None:
         cv2.namedWindow("Output", cv2.WND_PROP_FULLSCREEN)
         cv2.setWindowProperty("Output", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
-        base_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 640)
-        base_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
+        if cap is not None:
+            base_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 640)
+            base_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
+        else:
+            # Picamera2 is configured to 640x480 in init_input_source
+            base_width, base_height = 640, 480
 
         if output_resolution is not None:
             target_w, target_h = output_resolution
@@ -999,7 +1002,10 @@ def visualize(
         frame_height = target_h
 
         if save_stream_output:
-            cam_fps   = cap.get(cv2.CAP_PROP_FPS)
+            if cap is not None:
+                cam_fps = cap.get(cv2.CAP_PROP_FPS)
+            else:
+                cam_fps = 30.0
             final_fps = framerate or (cam_fps if cam_fps and cam_fps > 1 else 30.0)
 
             os.makedirs(output_dir, exist_ok=True)
@@ -1034,7 +1040,7 @@ def visualize(
         bgr_frame = cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)
         frame_to_show = resize_frame_for_output(bgr_frame, output_resolution)
 
-        if cap is not None:
+        if cap is not None or rpi_cam is not None:
             cv2.imshow("Output", frame_to_show)
             if save_stream_output and out is not None and frame_width and frame_height:
                 frame_to_save = cv2.resize(frame_to_show, (frame_width, frame_height))
@@ -1050,6 +1056,9 @@ def visualize(
                 out.release()
             if cap is not None:
                 cap.release()
+            if rpi_cam is not None:
+                rpi_cam.stop()
+                rpi_cam.close()
             cv2.destroyAllWindows()
             break
 

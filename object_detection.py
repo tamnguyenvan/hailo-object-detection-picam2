@@ -204,7 +204,7 @@ def run_inference_pipeline(net, input, batch_size, labels, output_dir,
         target=preprocess, args=(images, cap, rpi_cam, framerate, batch_size, input_queue, width, height)
     )
     postprocess_thread = threading.Thread(
-        target=visualize, args=(output_queue, cap, save_stream_output,
+        target=visualize, args=(output_queue, cap, rpi_cam, save_stream_output,
                                 output_dir, post_process_callback_fn,
                                 fps_tracker, output_resolution)
     )
