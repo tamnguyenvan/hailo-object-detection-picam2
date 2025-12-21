@@ -8,6 +8,7 @@ import numpy as np
 import queue
 import cv2
 import time
+import threading
 from enum import Enum
 from pathlib import Path
 import subprocess
@@ -529,8 +530,11 @@ def init_input_source(input_path, batch_size, camera_resolution):
         try:
             import picamera2
             rpi_cam = picamera2.Picamera2()
-            if camera_resolution in RESOLUTION_MAP:
-                width, height = RESOLUTION_MAP[camera_resolution]
+            
+            # Use 'sd' as default resolution if not specified
+            resolution_key = camera_resolution or "sd"
+            if resolution_key in RESOLUTION_MAP:
+                width, height = RESOLUTION_MAP[resolution_key]
                 config = rpi_cam.create_preview_configuration(main={"size": (width, height)})
             else:
                 config = rpi_cam.create_preview_configuration()
@@ -710,6 +714,7 @@ def id_to_color(idx):
 
 def preprocess(images: List[np.ndarray], cap: cv2.VideoCapture, rpi_cam, framerate: float, batch_size: int,
                input_queue: queue.Queue, width: int, height: int,
+               stop_event: Optional[threading.Event] = None,
                preprocess_fn: Optional[Callable[[np.ndarray, int, int], np.ndarray]] = None) -> None:
 
     """
@@ -727,12 +732,12 @@ def preprocess(images: List[np.ndarray], cap: cv2.VideoCapture, rpi_cam, framera
     """
     preprocess_fn = preprocess_fn or default_preprocess
     if rpi_cam:
-        preprocess_from_rpi_cam(rpi_cam, batch_size, input_queue, width, height, preprocess_fn, framerate)
+        preprocess_from_rpi_cam(rpi_cam, batch_size, input_queue, width, height, preprocess_fn, framerate, stop_event)
 
-    if cap is None:
+    if cap is None and rpi_cam is None:
         preprocess_images(images, batch_size, input_queue, width, height, preprocess_fn)
-    else:
-        preprocess_from_cap(cap, batch_size, input_queue, width, height, preprocess_fn, framerate)
+    elif cap is not None:
+        preprocess_from_cap(cap, batch_size, input_queue, width, height, preprocess_fn, framerate, stop_event)
 
     input_queue.put(None)  #Add sentinel value to signal end of input
 
@@ -742,7 +747,8 @@ def preprocess_from_rpi_cam(rpi_cam,
                         width: int,
                         height: int,
                         preprocess_fn: Callable[[np.ndarray, int, int], np.ndarray],
-                        framerate: Optional[float] = None) -> None:
+                        framerate: Optional[float] = None,
+                        stop_event: Optional[threading.Event] = None) -> None:
     """
     Process frames from the camera stream and enqueue them.
 
@@ -771,8 +777,13 @@ def preprocess_from_rpi_cam(rpi_cam,
         skip = 1  # no frame skipping, use all frames
     frame_idx = 0
 
-    while True:
-        frame = rpi_cam.capture_array()
+    while not (stop_event and stop_event.is_set()):
+        try:
+            frame = rpi_cam.capture_array()
+        except Exception as e:
+            logger.error(f"RPi Camera capture error: {e}")
+            break
+
         if frame.shape[2] > 3:
             frame = frame[:, :, :3]
 
@@ -798,7 +809,8 @@ def preprocess_from_cap(cap: cv2.VideoCapture,
                         width: int,
                         height: int,
                         preprocess_fn: Callable[[np.ndarray, int, int], np.ndarray],
-                        framerate: Optional[float] = None) -> None:
+                        framerate: Optional[float] = None,
+                        stop_event: Optional[threading.Event] = None) -> None:
     """
     Process frames from the camera stream and enqueue them.
 
@@ -826,7 +838,7 @@ def preprocess_from_cap(cap: cv2.VideoCapture,
         skip = 1  # no frame skipping, use all frames
     frame_idx = 0
 
-    while True:
+    while not (stop_event and stop_event.is_set()):
         ret, frame = cap.read()
         if not ret:
             break
@@ -960,7 +972,8 @@ def visualize(
     fps_tracker: Optional["FrameRateTracker"] = None,
     output_resolution: Optional[Tuple[int, int]] = None,
     framerate: Optional[float] = None,
-    side_by_side: bool = False
+    side_by_side: bool = False,
+    stop_event: Optional[threading.Event] = None
 ) -> None:
     """
     Visualize inference results: draw detections, show them on screen,
@@ -1022,8 +1035,12 @@ def visualize(
             )
 
     # Main loop
-    while True:
-        result = output_queue.get()
+    while not (stop_event and stop_event.is_set()):
+        try:
+            result = output_queue.get(timeout=1.0)
+        except queue.Empty:
+            continue
+
         if result is None:
             output_queue.task_done()
             break
@@ -1056,6 +1073,8 @@ def visualize(
         output_queue.task_done()
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
+            if stop_event:
+                stop_event.set()
             if save_stream_output and out is not None:
                 out.release()
             if cap is not None:

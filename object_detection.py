@@ -181,6 +181,7 @@ def run_inference_pipeline(net, input, batch_size, labels, output_dir,
     cap, images, rpi_cam = init_input_source(input, batch_size, camera_resolution)
     tracker = None
     fps_tracker = None
+    stop_event = threading.Event()
     if show_fps:
         fps_tracker = FrameRateTracker()
 
@@ -201,12 +202,12 @@ def run_inference_pipeline(net, input, batch_size, labels, output_dir,
     height, width, _ = hailo_inference.get_input_shape()
 
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, rpi_cam, framerate, batch_size, input_queue, width, height)
+        target=preprocess, args=(images, cap, rpi_cam, framerate, batch_size, input_queue, width, height, stop_event)
     )
     postprocess_thread = threading.Thread(
         target=visualize, args=(output_queue, cap, rpi_cam, save_stream_output,
                                 output_dir, post_process_callback_fn,
-                                fps_tracker, output_resolution)
+                                fps_tracker, output_resolution, framerate, False, stop_event)
     )
     infer_thread = threading.Thread(
         target=infer, args=(hailo_inference, input_queue, output_queue)
