@@ -18,7 +18,7 @@ def inference_result_handler(original_frame, infer_results, labels, config_data,
         np.ndarray: Frame with detections or tracks drawn.
     """
     detections = extract_detections(original_frame, infer_results, config_data)  # Should return dict with boxes, classes, scores
-    frame_with_detections = draw_detections(detections, original_frame, labels, tracker=tracker, draw_trail=draw_trail)
+    frame_with_detections = draw_detections(detections, original_frame, labels, tracker=tracker)
     return frame_with_detections
 
 def draw_detection(image: np.ndarray, box: list, labels: list, score: float, color: tuple, track=False):
