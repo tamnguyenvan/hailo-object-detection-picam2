@@ -23,44 +23,41 @@ def inference_result_handler(original_frame, infer_results, labels, config_data,
 
 def draw_detection(image: np.ndarray, box: list, labels: list, score: float, color: tuple, track=False):
     """
-    Draw box and label for one detection.
-
-    Args:
-        image (np.ndarray): Image to draw on.
-        box (list): Bounding box coordinates.
-        labels (list): List of labels (1 or 2 elements).
-        score (float): Detection score.
-        color (tuple): Color for the bounding box.
-        track (bool): Whether to include tracking info.
+    Draw premium box and semi-transparent label for one detection.
     """
     xmin, ymin, xmax, ymax = map(int, box)
-    cv2.rectangle(image, (xmin, ymin), (xmax, ymax), color, 2)
-    font = cv2.FONT_HERSHEY_SIMPLEX
+    
+    # Bounding box
+    cv2.rectangle(image, (xmin, ymin), (xmax, ymax), color, 2, cv2.LINE_AA)
+    
+    font = cv2.FONT_HERSHEY_DUPLEX
+    font_scale = 0.5
+    thickness = 1
+    
+    # Compose text
+    text = f"{labels[0]} {score:.0f}%"
+    if track and len(labels) > 1:
+        text = f"{labels[0]} {labels[1]}" # e.g. "person ID 1"
+        if len(labels) > 2:
+            text += f" | {labels[2]}" # e.g. " | 1:20"
 
-    # Compose texts
-    top_text = f"{labels[0]}: {score:.1f}%" if not track or len(labels) == 2 else f"{score:.1f}%"
-    bottom_text = None
-
-    if track:
-        if len(labels) == 2:
-            bottom_text = labels[1]
-        else:
-            bottom_text = labels[0]
-
-
-    # Set colors
-    text_color = (255, 255, 255)  # White
-    border_color = (0, 0, 0)  # Black
-
-    # Draw top text with black border first
-    cv2.putText(image, top_text, (xmin + 4, ymin + 20), font, 0.5, border_color, 2, cv2.LINE_AA)
-    cv2.putText(image, top_text, (xmin + 4, ymin + 20), font, 0.5, text_color, 1, cv2.LINE_AA)
-
-    # Draw bottom text if exists
-    if bottom_text:
-        pos = (xmax - 50, ymax - 6)
-        cv2.putText(image, bottom_text, pos, font, 0.5, border_color, 2, cv2.LINE_AA)
-        cv2.putText(image, bottom_text, pos, font, 0.5, text_color, 1, cv2.LINE_AA)
+    # Get text size
+    (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+    
+    # Draw semi-transparent background for label
+    label_ymin = max(ymin - text_h - 10, 0)
+    label_ymax = ymin
+    
+    # Create an overlay for the translucent background
+    overlay = image.copy()
+    cv2.rectangle(overlay, (xmin, label_ymin), (xmin + text_w + 10, label_ymax), color, -1)
+    
+    # Apply alpha blending
+    alpha = 0.6
+    cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+    
+    # Draw text on top
+    cv2.putText(image, text, (xmin + 5, ymin - 7), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
 
 def denormalize_and_rm_pad(box: list, size: int, padding_length: int, input_height: int, input_width: int) -> list:
@@ -139,21 +136,23 @@ def extract_detections(image: np.ndarray, detections: list, config_data) -> dict
     }
 
 
-def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None) -> np.ndarray:
+def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None, track_start_times=None) -> np.ndarray:
     """
-    Draw detections or tracking results on the image.
+    Draw detections or tracking results with object timers and refined aesthetics.
 
     Args:
         detections (dict): Raw detection outputs.
         img_out (np.ndarray): Image to draw on.
         labels (list): List of class labels.
         tracker (BYTETracker, optional): ByteTrack tracker instance.
+        track_start_times (dict, optional): Dict mapping track_id to start time.
 
     Returns:
         np.ndarray: Annotated image.
     """
+    import time
 
-    # Extract detection data from the dictionary
+    # Extract detection data
     boxes = detections["detection_boxes"]
     scores = detections["detection_scores"]
     num_detections = detections["num_detections"]
@@ -161,35 +160,49 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None)
 
     if tracker:
         dets_for_tracker = []
-
-        # Convert detection format to [xmin,ymin,xmax, ymax,score] for tracker
         for idx in range(num_detections):
             box = boxes[idx]
             score = scores[idx]
             dets_for_tracker.append([*box, score])
 
-        # Skip tracking if no detections passed
+        # Logic for "someone blocking the camera" is handled in demo.py by skipping this update
         if not dets_for_tracker:
             return img_out
 
-        # Run BYTETracker and get active tracks
         online_targets = tracker.update(np.array(dets_for_tracker))
 
-        # Draw tracked bounding boxes with ID labels
         for track in online_targets:
             track_id = track.track_id
             x1, y1, x2, y2 = track.tlbr
             xmin, ymin, xmax, ymax = map(int, [x1, y1, x2, y2])
             best_idx = find_best_matching_detection_index(track.tlbr, boxes)
             
+            # Default color from class
+            color = (255, 255, 255) # Fallback White
+            class_label = "Unknown"
+            
             if best_idx is not None:
                 color = tuple(id_to_color(classes[best_idx]).tolist())
-                draw_detection(img_out, [xmin, ymin, xmax, ymax], [labels[classes[best_idx]], f"ID {track_id}"],
-                               track.score * 100.0, color, track=True)
-            else:
-                color = (255, 255, 255) # White fallback
-                draw_detection(img_out, [xmin, ymin, xmax, ymax], [f"ID {track_id}"],
-                               track.score * 100.0, color, track=True)
+                class_label = labels[classes[best_idx]]
+
+            # Timer Logic
+            display_labels = [class_label, f"ID {track_id}"]
+            if track_start_times is not None:
+                if track_id not in track_start_times:
+                    track_start_times[track_id] = time.time()
+                
+                elapsed = time.time() - track_start_times[track_id]
+                mins = int(elapsed // 60)
+                secs = int(elapsed % 60)
+                time_str = f"{mins}:{secs:02d}"
+                display_labels.append(time_str)
+
+                # Turn red if > 60 seconds
+                if elapsed > 60:
+                    color = (0, 0, 255) # BGR Red
+
+            draw_detection(img_out, [xmin, ymin, xmax, ymax], display_labels,
+                           track.score * 100.0, color, track=True)
 
 
 

@@ -108,6 +108,9 @@ def main():
     picam.configure(stream_config)
     picam.start()
     
+    # Track timers
+    track_start_times = {} # persistent dictionary for ID -> start_time
+    
     # Queues
     input_queue = queue.Queue(maxsize=3)
     output_queue = queue.Queue(maxsize=3)
@@ -136,9 +139,23 @@ def main():
                 
             frame, inference_results = item
             
-            # Post-process & Track (in main thread to avoid complex sync with tracker)
+            # Post-process
             detections = extract_detections(frame, inference_results, config_data)
-            annotated_frame = draw_detections(detections, frame, labels, tracker=tracker)
+            
+            # Camera Blocking Logic: If no detections, skip tracker update to freeze status
+            current_tracker = tracker if detections['num_detections'] > 0 else None
+            
+            # Track & Draw
+            annotated_frame = draw_detections(detections, frame, labels, 
+                                             tracker=current_tracker, 
+                                             track_start_times=track_start_times)
+            
+            # Cleanup track_start_times for IDs that are no longer being tracked
+            if tracker:
+                active_ids = {t.track_id for t in tracker.tracked_stracks} | {t.track_id for t in tracker.lost_stracks}
+                stale_ids = [tid for tid in track_start_times if tid not in active_ids]
+                for tid in stale_ids:
+                    del track_start_times[tid]
             
             # Display
             display_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR)
