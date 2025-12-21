@@ -189,8 +189,8 @@ def run_inference_pipeline(net, input, batch_size, labels, output_dir,
         tracker_config = config_data.get("visualization_params", {}).get("tracker", {})
         tracker = BYTETracker(SimpleNamespace(**tracker_config))
 
-    input_queue = queue.Queue()
-    output_queue = queue.Queue()
+    input_queue = queue.Queue(maxsize=10)
+    output_queue = queue.Queue(maxsize=10)
 
     post_process_callback_fn = partial(
         inference_result_handler, labels=labels,

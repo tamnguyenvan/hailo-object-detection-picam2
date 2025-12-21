@@ -224,6 +224,12 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
                     cv2.line(img_out, point_a, point_b, color, 3) #(255, 0, 0), 2)
                     cv2.circle(img_out, point_b, radius=20, thickness=1, color=color) #, thickness=-1) # -1 for filled circle
 
+        # Cleanup tracklet_history: remove IDs not in online_targets
+        active_ids = {t.track_id for t in online_targets}
+        stale_ids = [tid for tid in tracklet_history if tid not in active_ids]
+        for tid in stale_ids:
+            del tracklet_history[tid]
+
 
 
     else:
