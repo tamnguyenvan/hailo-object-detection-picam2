@@ -774,6 +774,8 @@ def preprocess_from_rpi_cam(rpi_cam,
 
     while True:
         frame = rpi_cam.capture_array()
+        if frame.shape[2] > 3:
+            frame = frame[:, :, :3]
 
         frame_idx += 1
 
