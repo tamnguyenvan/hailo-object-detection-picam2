@@ -24,6 +24,7 @@ def inference_result_handler(original_frame, infer_results, labels, config_data,
 def draw_detection(image: np.ndarray, box: list, labels: list, score: float, color: tuple, track=False):
     """
     Draw premium box and semi-transparent label for one detection.
+    Optimized: only blends the ROI to maintain high FPS.
     """
     xmin, ymin, xmax, ymax = map(int, box)
     
@@ -37,27 +38,35 @@ def draw_detection(image: np.ndarray, box: list, labels: list, score: float, col
     # Compose text
     text = f"{labels[0]} {score:.0f}%"
     if track and len(labels) > 1:
-        text = f"{labels[0]} {labels[1]}" # e.g. "person ID 1"
+        text = f"{labels[0]} {labels[1]}"
         if len(labels) > 2:
-            text += f" | {labels[2]}" # e.g. " | 1:20"
+            text += f" | {labels[2]}"
 
     # Get text size
     (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
     
-    # Draw semi-transparent background for label
+    # Define label region
     label_ymin = max(ymin - text_h - 10, 0)
     label_ymax = ymin
+    label_xmin = xmin
+    label_xmax = xmin + text_w + 10
     
-    # Create an overlay for the translucent background
-    overlay = image.copy()
-    cv2.rectangle(overlay, (xmin, label_ymin), (xmin + text_w + 10, label_ymax), color, -1)
-    
-    # Apply alpha blending
-    alpha = 0.6
-    cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+    # Ensure label region is within image bounds
+    img_h, img_w = image.shape[:2]
+    label_xmax = min(label_xmax, img_w)
+    label_ymax = min(label_ymax, img_h)
+
+    # ROI-based Alpha Blending
+    if label_ymax > label_ymin and label_xmax > label_xmin:
+        roi = image[label_ymin:label_ymax, label_xmin:label_xmax]
+        overlay = roi.copy()
+        cv2.rectangle(overlay, (0, 0), (label_xmax - label_xmin, label_ymax - label_ymin), color, -1)
+        alpha = 0.6
+        cv2.addWeighted(overlay, alpha, roi, 1 - alpha, 0, roi)
     
     # Draw text on top
-    cv2.putText(image, text, (xmin + 5, ymin - 7), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+    text_y = ymin - 7 if ymin - 7 > 7 else ymin + text_h + 7
+    cv2.putText(image, text, (xmin + 5, text_y), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
 
 def denormalize_and_rm_pad(box: list, size: int, padding_length: int, input_height: int, input_width: int) -> list:
