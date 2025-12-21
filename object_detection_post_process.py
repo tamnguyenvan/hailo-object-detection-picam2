@@ -246,3 +246,8 @@ def compute_iou(boxA, boxB):
     areaA = max(1e-5, (boxA[2] - boxA[0]) * (boxA[3] - boxA[1]))
     areaB = max(1e-5, (boxB[2] - boxB[0]) * (boxB[3] - boxB[1]))
     return inter / (areaA + areaB - inter + 1e-5)
+
+
+def id_to_color(idx):
+    np.random.seed(idx)
+    return np.random.randint(0, 255, size=3, dtype=np.uint8)
