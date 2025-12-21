@@ -5,32 +5,6 @@ from toolbox import id_to_color
 import os
 from collections import deque
 
-# Dictionary to store a limited history of tracklet coordinates.
-# The keys will be the track IDs.
-tracklet_history = {}
-# Maximum number of past frames to display
-trail_length = 30 
-# Only draw trail for certain classes (e.g., person=0, phone=67 in COCO)
-TRACKLET_CLASSES = [0, 67]  # PERSON, SMARTPHONE
-
-def inference_result_handler(original_frame, infer_results, labels, config_data, tracker=None, draw_trail=False):
-    """
-    Processes inference results and draw detections (with optional tracking).
-
-    Args:
-        infer_results (list): Raw output from the model.
-        original_frame (np.ndarray): Original image frame.
-        labels (list): List of class labels.
-        enable_tracking (bool): Whether tracking is enabled.
-        tracker (BYTETracker, optional): ByteTrack tracker instance.
-
-    Returns:
-        np.ndarray: Frame with detections or tracks drawn.
-    """
-    detections = extract_detections(original_frame, infer_results, config_data)  # Should return dict with boxes, classes, scores
-    frame_with_detections = draw_detections(detections, original_frame, labels, tracker=tracker, draw_trail=draw_trail)
-    return frame_with_detections
-
 
 def draw_detection(image: np.ndarray, box: list, labels: list, score: float, color: tuple, track=False):
     """
@@ -150,7 +124,7 @@ def extract_detections(image: np.ndarray, detections: list, config_data) -> dict
     }
 
 
-def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None, draw_trail=False) -> np.ndarray:
+def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None) -> np.ndarray:
     """
     Draw detections or tracking results on the image.
 
@@ -158,7 +132,6 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
         detections (dict): Raw detection outputs.
         img_out (np.ndarray): Image to draw on.
         labels (list): List of class labels.
-        enable_tracking (bool): Whether to use tracker output (ByteTrack).
         tracker (BYTETracker, optional): ByteTrack tracker instance.
 
     Returns:
@@ -166,17 +139,17 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
     """
 
     # Extract detection data from the dictionary
-    boxes = detections["detection_boxes"]  # List of [xmin,ymin,xmaxm, ymax] boxes
-    scores = detections["detection_scores"]  # List of detection confidences
-    num_detections = detections["num_detections"]  # Total number of valid detections
-    classes = detections["detection_classes"]  # List of class indices per detection
+    boxes = detections["detection_boxes"]
+    scores = detections["detection_scores"]
+    num_detections = detections["num_detections"]
+    classes = detections["detection_classes"]
 
     if tracker:
         dets_for_tracker = []
 
-        # Convert detection format to [xmin,ymin,xmaxm ymax,score] for tracker
+        # Convert detection format to [xmin,ymin,xmax, ymax,score] for tracker
         for idx in range(num_detections):
-            box = boxes[idx]  # [x, y, w, h]
+            box = boxes[idx]
             score = scores[idx]
             dets_for_tracker.append([*box, score])
 
@@ -189,46 +162,19 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
 
         # Draw tracked bounding boxes with ID labels
         for track in online_targets:
-            track_id = track.track_id  # Unique tracker ID
-            x1, y1, x2, y2 = track.tlbr  # Bounding box (top-left, bottom-right)
+            track_id = track.track_id
+            x1, y1, x2, y2 = track.tlbr
             xmin, ymin, xmax, ymax = map(int, [x1, y1, x2, y2])
             best_idx = find_best_matching_detection_index(track.tlbr, boxes)
-            color = tuple(id_to_color(classes[best_idx]).tolist())  # Color based on class
-            if best_idx is None:
-                draw_detection(img_out, [xmin, ymin, xmax, ymax], f"ID {track_id}",
-                               track.score * 100.0, color, track=True)
-            else:
+            
+            if best_idx is not None:
+                color = tuple(id_to_color(classes[best_idx]).tolist())
                 draw_detection(img_out, [xmin, ymin, xmax, ymax], [labels[classes[best_idx]], f"ID {track_id}"],
                                track.score * 100.0, color, track=True)
-                               
-            if not classes[best_idx] in TRACKLET_CLASSES:
-                continue
-
-            # Get the centroid of the current bounding box
-            center_x = int((x1 + x2) / 2)
-            center_y = int((y1 + y2) / 2)
-            centroid = (center_x, center_y)
-            
-            # Initialize or update the tracklet history
-            if track_id not in tracklet_history:
-                tracklet_history[track_id] = deque(maxlen=trail_length)
-            tracklet_history[track_id].append(centroid)
-
-            if draw_trail:
-                for i in range(1, len(tracklet_history[track_id])):
-                    # Get the center point for the current and previous frames
-                    point_a = tracklet_history[track_id][i-1]
-                    point_b = tracklet_history[track_id][i]
-
-                    # Draw a line between the points and draw the points as circles
-                    cv2.line(img_out, point_a, point_b, color, 3) #(255, 0, 0), 2)
-                    cv2.circle(img_out, point_b, radius=20, thickness=1, color=color) #, thickness=-1) # -1 for filled circle
-
-        # Cleanup tracklet_history: remove IDs not in online_targets
-        active_ids = {t.track_id for t in online_targets}
-        stale_ids = [tid for tid in tracklet_history if tid not in active_ids]
-        for tid in stale_ids:
-            del tracklet_history[tid]
+            else:
+                color = (255, 255, 255) # White fallback
+                draw_detection(img_out, [xmin, ymin, xmax, ymax], [f"ID {track_id}"],
+                               track.score * 100.0, color, track=True)
 
 
 

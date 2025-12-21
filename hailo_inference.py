@@ -142,6 +142,14 @@ class HailoInfer:
             partial(inference_callback_fn, bindings_list=bindings_list)
         )
 
+    def run_sync(self, input_batch: List[np.ndarray], inference_callback_fn: Callable) -> None:
+        """
+        Equivalent to run() but wait for results.
+        """
+        self.run(input_batch, inference_callback_fn)
+        if self.last_infer_job:
+            self.last_infer_job.wait(10000)
+
     def create_bindings(self, configured_model, input_batch):
         """
         Create a list of input-output bindings for a batch of frames.
