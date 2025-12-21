@@ -208,7 +208,7 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
 
                 # Turn red if > 60 seconds
                 if elapsed > 60:
-                    color = (0, 0, 255) # BGR Red
+                    color = (255, 0, 0) # RGB Red
 
             draw_detection(img_out, [xmin, ymin, xmax, ymax], display_labels,
                            track.score * 100.0, color, track=True)
