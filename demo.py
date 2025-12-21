@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
 import cv2
 import numpy as np
-import threading
 import sys
 import os
-from pathlib import Path
 from loguru import logger
 from types import SimpleNamespace
 
@@ -24,16 +21,20 @@ from toolbox import (
     get_labels,
     load_json_file,
     default_preprocess,
-    id_to_color,
     FrameRateTracker,
-    resolve_net_arg
 )
 
 def main():
+    parser = argparse.ArgumentParser(description="Hailo Object Detection")
+    parser.add_argument("--net-path", type=str, default="object_detection/yolov8n.hef", help="Path to the HEF file")
+    parser.add_argument("--labels-path", type=str, default="coco.txt", help="Path to the labels file")
+    parser.add_argument("--config-path", type=str, default="config.json", help="Path to the config file")
+    args = parser.parse_args()
+    
     # Configuration
-    net_path = resolve_net_arg("object_detection", "yolov8n", ".")
-    labels_path = "coco.txt"
-    config_path = "config.json"
+    net_path = args.net_path
+    labels_path = args.labels_path
+    config_path = args.config_path
     
     labels = get_labels(labels_path)
     config_data = load_json_file(config_path)

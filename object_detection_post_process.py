@@ -2,9 +2,24 @@ import cv2
 import numpy as np
 from toolbox import id_to_color
 
-import os
-from collections import deque
 
+def inference_result_handler(original_frame, infer_results, labels, config_data, tracker=None, draw_trail=False):
+    """
+    Processes inference results and draw detections (with optional tracking).
+
+    Args:
+        infer_results (list): Raw output from the model.
+        original_frame (np.ndarray): Original image frame.
+        labels (list): List of class labels.
+        enable_tracking (bool): Whether tracking is enabled.
+        tracker (BYTETracker, optional): ByteTrack tracker instance.
+
+    Returns:
+        np.ndarray: Frame with detections or tracks drawn.
+    """
+    detections = extract_detections(original_frame, infer_results, config_data)  # Should return dict with boxes, classes, scores
+    frame_with_detections = draw_detections(detections, original_frame, labels, tracker=tracker, draw_trail=draw_trail)
+    return frame_with_detections
 
 def draw_detection(image: np.ndarray, box: list, labels: list, score: float, color: tuple, track=False):
     """
