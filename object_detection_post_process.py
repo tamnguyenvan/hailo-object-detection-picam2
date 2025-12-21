@@ -46,15 +46,11 @@ def draw_detection(image: np.ndarray, box: list, labels: list, score: float, col
     (text_w, text_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
     
     # Define label region
-    label_ymin = max(ymin - text_h - 10, 0)
-    label_ymax = ymin
-    label_xmin = xmin
-    label_xmax = xmin + text_w + 10
-    
-    # Ensure label region is within image bounds
     img_h, img_w = image.shape[:2]
-    label_xmax = min(label_xmax, img_w)
-    label_ymax = min(label_ymax, img_h)
+    label_ymin = max(ymin - text_h - 10, 0)
+    label_ymax = min(ymin, img_h)
+    label_xmin = max(xmin, 0)
+    label_xmax = min(xmin + text_w + 10, img_w)
 
     # ROI-based Alpha Blending
     if label_ymax > label_ymin and label_xmax > label_xmin:
@@ -66,7 +62,10 @@ def draw_detection(image: np.ndarray, box: list, labels: list, score: float, col
     
     # Draw text on top
     text_y = ymin - 7 if ymin - 7 > 7 else ymin + text_h + 7
-    cv2.putText(image, text, (xmin + 5, text_y), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+    # Ensure text is also within bounds
+    text_y = max(text_h, min(text_y, img_h - 5))
+    text_x = max(5, min(xmin + 5, img_w - text_w))
+    cv2.putText(image, text, (text_x, text_y), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
 
 def denormalize_and_rm_pad(box: list, size: int, padding_length: int, input_height: int, input_width: int) -> list:
