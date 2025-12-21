@@ -35,8 +35,8 @@ def capture_thread_func(picam, model_w, model_h, input_queue, stop_event):
             break
         
         if frame.shape[2] == 4:
-            frame = frame[:, :, :3]
-            
+            frame = frame[:, :, :3].copy()
+        
         preprocessed_frame = default_preprocess(frame, model_w, model_h)
         
         try:
