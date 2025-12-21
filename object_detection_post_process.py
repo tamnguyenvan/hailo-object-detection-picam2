@@ -191,8 +191,12 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
             class_label = "Unknown"
             
             if best_idx is not None:
-                color = tuple(id_to_color(classes[best_idx]).tolist())
-                class_label = labels[classes[best_idx]]
+                class_id = classes[best_idx]
+                color = tuple(id_to_color(class_id).tolist())
+                if class_id < len(labels):
+                    class_label = labels[class_id]
+                else:
+                    class_label = f"Class {class_id}"
 
             # Timer Logic
             display_labels = [class_label, f"ID {track_id}"]
