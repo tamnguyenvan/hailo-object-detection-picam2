@@ -534,10 +534,9 @@ def init_input_source(input_path, batch_size, camera_resolution):
                 config = rpi_cam.create_preview_configuration(main={"size": (width, height)})
             else:
                 config = rpi_cam.create_preview_configuration()
-            # rpi_cam.configure(config)
-            rpi_cam.configure(rpi_cam.create_preview_configuration(main={"size": (640, 480)}))
+            rpi_cam.configure(config)
             rpi_cam.start()
-            logger.info("Using RPi camera (Picamera2)")
+            logger.info(f"Using RPi camera (Picamera2) with resolution: {rpi_cam.configuration['main']['size']}")
             return cap, images, rpi_cam  # Return extra rpi_cam
         except ImportError:
             logger.info("Picamera2 not available, trying USB camera...")
@@ -991,9 +990,12 @@ def visualize(
         if cap is not None:
             base_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 640)
             base_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
-        else:
-            # Picamera2 is configured to 640x480 in init_input_source
-            base_width, base_height = 640, 480
+        elif rpi_cam is not None:
+            # Get resolution from Picamera2 configuration
+            try:
+                base_width, base_height = rpi_cam.configuration['main']['size']
+            except (AttributeError, KeyError, TypeError):
+                base_width, base_height = 640, 480
 
         if output_resolution is not None:
             target_w, target_h = output_resolution
