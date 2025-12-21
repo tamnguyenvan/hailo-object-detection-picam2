@@ -151,3 +151,8 @@ class FrameRateTracker:
             str: e.g. "Processed 200 frames at 29.81 FPS"
         """
         return f"Processed {self.count} frames at {self.fps:.2f} FPS"
+
+
+def id_to_color(idx):
+    np.random.seed(idx)
+    return np.random.randint(0, 255, size=3, dtype=np.uint8)
