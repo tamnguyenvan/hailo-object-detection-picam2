@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 from .kalman_filter import KalmanFilter
 from .matching import Matching
@@ -17,6 +18,7 @@ class STrack(BaseTrack):
 
         self.score = score
         self.tracklet_len = 0
+        self.last_seen_time = time.time()  # Track last detection time
 
     def predict(self):
         mean_state = self.mean.copy()
@@ -50,6 +52,7 @@ class STrack(BaseTrack):
         # self.is_activated = True
         self.frame_id = frame_id
         self.start_frame = frame_id
+        self.last_seen_time = time.time()
 
     def re_activate(self, new_track, frame_id, new_id=False):
         self.mean, self.covariance = self.kalman_filter.update(
@@ -62,6 +65,7 @@ class STrack(BaseTrack):
         if new_id:
             self.track_id = self.next_id()
         self.score = new_track.score
+        self.last_seen_time = time.time()
 
     def update(self, new_track, frame_id):
         """
@@ -81,6 +85,7 @@ class STrack(BaseTrack):
         self.is_activated = True
 
         self.score = new_track.score
+        self.last_seen_time = time.time()
 
     @property
     # @jit(nopython=True)
@@ -149,6 +154,8 @@ class BYTETracker(object):
         self.buffer_size = int(frame_rate / 30.0 * args.track_buffer)
         self.max_time_lost = self.buffer_size
         self.kalman_filter = KalmanFilter()
+        # Time-based track timeout (in seconds). If set, overrides frame-based removal.
+        self.track_timeout_seconds = getattr(args, 'track_timeout_seconds', None)
 
     def update(self, output_results):
         self.frame_id += 1
@@ -259,10 +266,17 @@ class BYTETracker(object):
             track.activate(self.kalman_filter, self.frame_id)
             activated_starcks.append(track)
         """ Step 5: Update state"""
+        current_time = time.time()
         for track in self.lost_stracks:
-            if self.frame_id - track.end_frame > self.max_time_lost:
-                track.mark_removed()
-                removed_stracks.append(track)
+            # Use time-based removal if configured, otherwise use frame-based
+            if self.track_timeout_seconds is not None:
+                if current_time - track.last_seen_time > self.track_timeout_seconds:
+                    track.mark_removed()
+                    removed_stracks.append(track)
+            else:
+                if self.frame_id - track.end_frame > self.max_time_lost:
+                    track.mark_removed()
+                    removed_stracks.append(track)
 
         # print('Ramained match {} s'.format(t4-t3))
 
